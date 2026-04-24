@@ -7,8 +7,37 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local VirtualUser = game:GetService("VirtualUser")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
 
 local player = Players.LocalPlayer
+
+-- Funciones de guardado de configuración
+local configName = "BloxFruitsConfig_Slayer.json"
+local cfg = {
+    distanceValue = 5,
+    posName = "Arriba",
+    selectedWeapon = "Auto"
+}
+
+local function saveSettings()
+    if writefile then
+        pcall(function()
+            writefile(configName, HttpService:JSONEncode(cfg))
+        end)
+    end
+end
+
+local function loadSettings()
+    if isfile and isfile(configName) then
+        pcall(function()
+            local decoded = HttpService:JSONDecode(readfile(configName))
+            if decoded.distanceValue then cfg.distanceValue = decoded.distanceValue end
+            if decoded.posName then cfg.posName = decoded.posName end
+            if decoded.selectedWeapon then cfg.selectedWeapon = decoded.selectedWeapon end
+        end)
+    end
+end
+loadSettings()
 
 -- Limpiar interfaz anterior si existe
 local existing = CoreGui:FindFirstChild("AutoFarmMenuUI") or player:WaitForChild("PlayerGui"):FindFirstChild("AutoFarmMenuUI")
@@ -25,14 +54,11 @@ if not success then ScreenGui.Parent = player:WaitForChild("PlayerGui") end
 local isMenuOpen = true
 local autoFarmEnabled = false
 local autoClickEnabled = false
-local distanceValue = 5
-local posOptions = {"Arriba", "Lado", "Abajo"}
-local currentPosIndex = 1
 
 -- Marco Principal
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 350, 0, 260)
-MainFrame.Position = UDim2.new(0.5, -175, 0.5, -130)
+MainFrame.Size = UDim2.new(0, 350, 0, 310) -- Más grande para que quepan las nuevas opciones
+MainFrame.Position = UDim2.new(0.5, -175, 0.5, -155)
 MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
@@ -117,33 +143,112 @@ local function createSlider(text, yPos, min, max, default)
             local relX = math.clamp((mousePos - SliderBG.AbsolutePosition.X) / SliderBG.AbsoluteSize.X, 0, 1)
             SliderFill.Size = UDim2.new(relX, 0, 1, 0)
             local val = math.floor(min + (max - min) * relX)
-            distanceValue = val
+            cfg.distanceValue = val
             Label.Text = text .. ": " .. val
+            saveSettings()
         end
     end)
 end
 
+local function createDropdown(text, yPos, getOptionsFunc, defaultOption, callback)
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(0.9, 0, 0, 35)
+    Frame.Position = UDim2.new(0.05, 0, 0, yPos)
+    Frame.BackgroundTransparency = 1
+    Frame.Parent = MainFrame
+    
+    local MainBtn = Instance.new("TextButton")
+    MainBtn.Size = UDim2.new(1, 0, 1, 0)
+    MainBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+    MainBtn.Text = text .. ": " .. defaultOption
+    MainBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    MainBtn.Font = Enum.Font.Gotham
+    MainBtn.TextSize = 14
+    MainBtn.ZIndex = 2
+    MainBtn.Parent = Frame
+    Instance.new("UICorner", MainBtn).CornerRadius = UDim.new(0, 6)
+    
+    local Scroll = Instance.new("ScrollingFrame")
+    Scroll.Size = UDim2.new(1, 0, 0, 100)
+    Scroll.Position = UDim2.new(0, 0, 1, 2)
+    Scroll.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+    Scroll.BorderSizePixel = 0
+    Scroll.Visible = false
+    Scroll.ZIndex = 5
+    Scroll.ScrollBarThickness = 4
+    Scroll.Parent = Frame
+    Instance.new("UICorner", Scroll).CornerRadius = UDim.new(0, 6)
+    
+    local UIListLayout = Instance.new("UIListLayout")
+    UIListLayout.Parent = Scroll
+    
+    MainBtn.MouseButton1Click:Connect(function()
+        Scroll.Visible = not Scroll.Visible
+        if Scroll.Visible then
+            for _, child in ipairs(Scroll:GetChildren()) do
+                if child:IsA("TextButton") then child:Destroy() end
+            end
+            local opts = getOptionsFunc()
+            Scroll.CanvasSize = UDim2.new(0, 0, 0, #opts * 30)
+            for _, opt in ipairs(opts) do
+                local OptBtn = Instance.new("TextButton")
+                OptBtn.Size = UDim2.new(1, 0, 0, 30)
+                OptBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+                OptBtn.Text = opt
+                OptBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+                OptBtn.Font = Enum.Font.Gotham
+                OptBtn.TextSize = 14
+                OptBtn.ZIndex = 6
+                OptBtn.Parent = Scroll
+                OptBtn.MouseButton1Click:Connect(function()
+                    MainBtn.Text = text .. ": " .. opt
+                    Scroll.Visible = false
+                    callback(opt)
+                end)
+            end
+        end
+    end)
+    
+    return MainBtn
+end
+
 -- Creación de Componentes de la Interfaz
-local AutoFarmBtn
-AutoFarmBtn = createButton("Auto Farm Money: OFF", 50, function(btn)
+local AutoFarmBtn = createButton("Auto Farm Money: OFF", 50, function(btn)
     autoFarmEnabled = not autoFarmEnabled
     btn.Text = "Auto Farm Money: " .. (autoFarmEnabled and "ON" or "OFF")
     btn.BackgroundColor3 = autoFarmEnabled and Color3.fromRGB(80, 200, 80) or Color3.fromRGB(50, 50, 55)
 end)
 
-local PosBtn
-PosBtn = createButton("Posición: " .. posOptions[currentPosIndex], 95, function(btn)
-    currentPosIndex = currentPosIndex + 1
-    if currentPosIndex > #posOptions then currentPosIndex = 1 end
-    btn.Text = "Posición: " .. posOptions[currentPosIndex]
+local posOptionsList = {"Arriba", "Lado", "Abajo"}
+createDropdown("Posición", 95, function() return posOptionsList end, cfg.posName, function(selected)
+    cfg.posName = selected
+    saveSettings()
 end)
 
-createSlider("Distancia al NPC (Metros)", 140, 0, 30, distanceValue)
+createSlider("Distancia al NPC (M)", 140, 0, 30, cfg.distanceValue)
 
-local AutoClickBtn
-AutoClickBtn = createButton("Auto Click: OFF", 200, function(btn)
+-- Función que recolecta todas tus armas del inventario
+local function getWeaponOptions()
+    local opts = {"Auto"}
+    for _, tool in ipairs(player.Backpack:GetChildren()) do
+        if tool:IsA("Tool") and not table.find(opts, tool.Name) then table.insert(opts, tool.Name) end
+    end
+    if player.Character then
+        for _, tool in ipairs(player.Character:GetChildren()) do
+            if tool:IsA("Tool") and not table.find(opts, tool.Name) then table.insert(opts, tool.Name) end
+        end
+    end
+    return opts
+end
+
+createDropdown("Arma", 195, getWeaponOptions, cfg.selectedWeapon, function(selected)
+    cfg.selectedWeapon = selected
+    saveSettings()
+end)
+
+local AutoClickBtn = createButton("Auto Click Remotes: OFF", 250, function(btn)
     autoClickEnabled = not autoClickEnabled
-    btn.Text = "Auto Click: " .. (autoClickEnabled and "ON" or "OFF")
+    btn.Text = "Auto Click Remotes: " .. (autoClickEnabled and "ON" or "OFF")
     btn.BackgroundColor3 = autoClickEnabled and Color3.fromRGB(80, 200, 80) or Color3.fromRGB(50, 50, 55)
 end)
 
@@ -160,7 +265,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
     end
 end)
 
--- Botón para Móviles (Solo se crea si es dispositivo táctil)
+-- Botón para Móviles
 if UserInputService.TouchEnabled then
     local MobileToggle = Instance.new("TextButton")
     MobileToggle.Size = UDim2.new(0, 50, 0, 50)
@@ -171,16 +276,24 @@ if UserInputService.TouchEnabled then
     MobileToggle.Font = Enum.Font.GothamBold
     MobileToggle.Parent = ScreenGui
     Instance.new("UICorner", MobileToggle).CornerRadius = UDim.new(0, 8)
-    
     MobileToggle.MouseButton1Click:Connect(toggleMenu)
 end
 
 -- Lógica Interna del Script
 
+-- Verifica si ya tienes una misión activa leyendo la interfaz de Blox Fruits
+local function hasActiveQuest()
+    local mainUI = player:WaitForChild("PlayerGui"):FindFirstChild("Main")
+    if mainUI and mainUI:FindFirstChild("Quest") then
+        return mainUI.Quest.Visible
+    end
+    return false
+end
+
 local lastQuestTime = 0
 local function checkAndStartQuest()
-    -- Ejecutamos el Remote solo cada 5 segundos para no crashear
-    if tick() - lastQuestTime > 5 then
+    -- Solo pide la misión si NO tienes una misión activa
+    if not hasActiveQuest() and tick() - lastQuestTime > 5 then
         lastQuestTime = tick()
         task.spawn(function()
             local args = {
@@ -195,18 +308,37 @@ local function checkAndStartQuest()
     end
 end
 
-local function equipBestTool()
+-- Equipa el arma seleccionada en el Dropdown
+local function equipSelectedTool()
     local char = player.Character
     if not char then return end
     
-    -- Si ya tiene una herramienta en mano, no hacer nada
-    if char:FindFirstChildOfClass("Tool") then return end
+    local targetToolName = cfg.selectedWeapon
     
-    -- Busca en el inventario y equipa la primera que encuentre (espada, fruta, etc)
-    for _, tool in ipairs(player.Backpack:GetChildren()) do
-        if tool:IsA("Tool") then
-            tool.Parent = char
-            break
+    if targetToolName == "Auto" then
+        if char:FindFirstChildOfClass("Tool") then return end
+        for _, tool in ipairs(player.Backpack:GetChildren()) do
+            if tool:IsA("Tool") then
+                tool.Parent = char
+                break
+            end
+        end
+    else
+        -- Equipa un arma específica
+        local currentTool = char:FindFirstChildOfClass("Tool")
+        if currentTool and currentTool.Name == targetToolName then
+            return -- Ya la tiene en la mano
+        end
+        
+        -- Si tiene otra cosa equipada, la devuelve a la mochila
+        if currentTool then
+            currentTool.Parent = player.Backpack
+        end
+        
+        -- Saca el arma elegida de la mochila y la pone en el personaje
+        local toolInBackpack = player.Backpack:FindFirstChild(targetToolName)
+        if toolInBackpack and toolInBackpack:IsA("Tool") then
+            toolInBackpack.Parent = char
         end
     end
 end
@@ -219,7 +351,6 @@ local function getEnemy()
     local bestEnemy = nil
     local shortestDist = math.huge
     
-    -- Buscamos específicamente al NPC "Skull Slayer" vivo más cercano
     if workspace:FindFirstChild("Enemies") then
         for _, obj in ipairs(workspace.Enemies:GetChildren()) do
             if string.find(string.lower(obj.Name), "skull slayer") and obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj.Humanoid.Health > 0 and obj:FindFirstChild("HumanoidRootPart") then
@@ -236,9 +367,9 @@ end
 
 local function getPositionOffset(eHrp)
     local targetPos = eHrp.Position
-    local posName = posOptions[currentPosIndex]
+    local posName = cfg.posName
+    local distanceValue = cfg.distanceValue
     
-    -- Te posiciona y te hace mirar hacia el enemigo
     if posName == "Arriba" then
         return CFrame.new(targetPos + Vector3.new(0, distanceValue, 0), targetPos)
     elseif posName == "Abajo" then
@@ -259,18 +390,21 @@ task.spawn(function()
                 local eHrp = targetEnemy:FindFirstChild("HumanoidRootPart")
                 local eHum = targetEnemy:FindFirstChild("Humanoid")
                 
-                -- Mientras estemos farmeando y el enemigo viva
                 while autoFarmEnabled and targetEnemy.Parent and eHum and eHum.Health > 0 do
                     local char = player.Character
                     if char and char:FindFirstChild("HumanoidRootPart") then
-                        -- Nos teletransportamos a la posición calculada
+                        -- Teletransportar y mirar al NPC
                         char.HumanoidRootPart.CFrame = getPositionOffset(eHrp)
-                        equipBestTool()
+                        
+                        -- Anti-Fling: Previene salir volando al matar al NPC
+                        char.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+                        char.HumanoidRootPart.RotVelocity = Vector3.new(0, 0, 0)
+                        
+                        equipSelectedTool()
                     end
                     task.wait()
                 end
             else
-                -- Si no hay enemigos, esperamos 1 segundo antes de volver a buscar
                 task.wait(1)
             end
         end
@@ -279,12 +413,11 @@ end)
 
 local lastAttackTick = 0
 
--- Bucle del Auto Click
+-- Bucle del Auto Click (Remotes)
 RunService.RenderStepped:Connect(function()
-    -- SOLO pega si AutoClick está activado y el menú está CERRADO
     if autoClickEnabled and not isMenuOpen then
         -- Disparar los Remotes de ataque rápido sin click físico
-        if tick() - lastAttackTick >= 0.1 then -- Limite para no crashear (10 veces por seg)
+        if tick() - lastAttackTick >= 0.1 then
             lastAttackTick = tick()
             local targetEnemy = getEnemy()
             if targetEnemy then
@@ -293,11 +426,8 @@ RunService.RenderStepped:Connect(function()
                     task.spawn(function()
                         pcall(function()
                             local Net = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net")
-                            
-                            -- 1. Primero RegisterAttack
                             Net:WaitForChild("RE/RegisterAttack"):FireServer(0.4000000059604645)
                             
-                            -- 2. Luego RegisterHit al target
                             local hitArgs = {
                                 hitPart,
                                 {},
