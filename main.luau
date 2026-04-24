@@ -54,11 +54,13 @@ if not success then ScreenGui.Parent = player:WaitForChild("PlayerGui") end
 local isMenuOpen = true
 local autoFarmEnabled = false
 local autoClickEnabled = false
+local autoBusoEnabled = false
+local autoKenEnabled = false
 
 -- Marco Principal
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 350, 0, 310) -- Más grande para que quepan las nuevas opciones
-MainFrame.Position = UDim2.new(0.5, -175, 0.5, -155)
+MainFrame.Size = UDim2.new(0, 350, 0, 410) -- Más grande para que quepan las nuevas opciones
+MainFrame.Position = UDim2.new(0.5, -175, 0.5, -205)
 MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
@@ -252,6 +254,27 @@ local AutoClickBtn = createButton("Auto Click Remotes: OFF", 250, function(btn)
     btn.BackgroundColor3 = autoClickEnabled and Color3.fromRGB(80, 200, 80) or Color3.fromRGB(50, 50, 55)
 end)
 
+local AutoBusoBtn = createButton("Auto Haki (Buso): OFF", 300, function(btn)
+    autoBusoEnabled = not autoBusoEnabled
+    btn.Text = "Auto Haki (Buso): " .. (autoBusoEnabled and "ON" or "OFF")
+    btn.BackgroundColor3 = autoBusoEnabled and Color3.fromRGB(80, 200, 80) or Color3.fromRGB(50, 50, 55)
+end)
+
+local AutoKenBtn = createButton("Auto Ken (Observación): OFF", 350, function(btn)
+    autoKenEnabled = not autoKenEnabled
+    btn.Text = "Auto Ken (Observación): " .. (autoKenEnabled and "ON" or "OFF")
+    btn.BackgroundColor3 = autoKenEnabled and Color3.fromRGB(80, 200, 80) or Color3.fromRGB(50, 50, 55)
+    
+    -- Si lo apagamos manualmente, forzar el Remote de apagado
+    if not autoKenEnabled then
+        task.spawn(function()
+            pcall(function()
+                ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommE"):FireServer("Ken", false)
+            end)
+        end)
+    end
+end)
+
 -- Lógica para abrir/cerrar menú
 local function toggleMenu()
     isMenuOpen = not isMenuOpen
@@ -438,6 +461,29 @@ RunService.RenderStepped:Connect(function()
                     end)
                 end
             end
+        end
+    end
+end)
+
+-- Bucle de Auto Haki y Auto Ken
+task.spawn(function()
+    while task.wait(1) do
+        -- Auto Buso
+        if autoBusoEnabled then
+            local char = player.Character
+            -- Verificamos si el Haki de Armadura no está activado
+            if char and not char:FindFirstChild("HasBuso") then
+                pcall(function()
+                    ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("Buso")
+                end)
+            end
+        end
+        
+        -- Auto Ken
+        if autoKenEnabled then
+            pcall(function()
+                ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommE"):FireServer("Ken", true)
+            end)
         end
     end
 end)
